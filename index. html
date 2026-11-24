@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f3efe6">
+<title>सवारी गिनती</title>
+<link rel="preconnect" href="https://fonts.gstatic.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<style>
+:root{--bg:#f3efe6;--ink:#1d2a24;--muted:#6b7a72;--card:#fffdf8;--line:#d9d2c1;--accent:#1f6f4a;--warn:#b5472b;
+  color-scheme:light;}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141a17;--ink:#eef3ef;--muted:#9aa8a0;--card:#1d2622;--line:#2e3a34;--accent:#6fd39b;--warn:#f08a6c;color-scheme:dark;}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:"Noto Sans Devanagari",system-ui,sans-serif;font-size:16px;padding:env(safe-area-inset-top,0) 14px env(safe-area-inset-bottom,0);}
+header{padding:14px 0 6px}
+h1{font-size:20px;margin:0;font-weight:700}
+.sub{color:var(--muted);font-size:13px;margin-top:2px}
+.video{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:14px;overflow:hidden;margin:10px 0}
+.video video,.video canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.status{font-size:13px;color:var(--muted);min-height:20px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
+.big{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.big b{display:block;font-size:30px;font-weight:700;color:var(--accent)}
+.big span{font-size:13px;color:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+button{font:inherit;font-weight:600;border:0;border-radius:12px;padding:13px 16px;background:var(--accent);color:#fff;cursor:pointer;flex:1;min-width:110px}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.warn{background:var(--warn)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:10px 0}
+.card h2{font-size:15px;margin:0 0 8px}
+label{display:block;font-size:13px;color:var(--muted);margin:8px 0 3px}
+input{width:100%;font:inherit;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+ul{list-style:none;padding:0;margin:0;font-size:14px}
+li{padding:7px 0;border-bottom:1px dashed var(--line);display:flex;justify-content:space-between;gap:8px}
+li:last-child{border-bottom:0}
+.warnmsg{color:var(--warn);font-size:14px;min-height:0}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>सवारी गिनती</h1>
+  <div class="sub" id="routeLabel"></div>
+</header>
+
+<div class="video">
+  <video id="cam" playsinline muted autoplay></video>
+  <canvas id="ov"></canvas>
+</div>
+<div class="status" id="status">कैमरा शुरू हो रहा है…</div>
+
+<div class="row">
+  <button id="startBtn">गिनती शुरू करें</button>
+  <button class="ghost" id="pauseBtn">रोकें</button>
+</div>
+
+<div class="grid">
+  <div class="big"><b id="boarded">0</b><span>आज चढ़ी सवारी</span></div>
+  <div class="big"><b id="income">₹0</b><span>अनुमानित कमाई</span></div>
+  <div class="big"><b id="inside">0</b><span>अभी गाड़ी में</span></div>
+  <div class="big"><b id="alighted">0</b><span>आज उतरी सवारी</span></div>
+</div>
+<div class="warnmsg" id="warn"></div>
+
+<div class="row">
+  <button class="ghost" id="minusBtn">−1 (उतरा)</button>
+  <button class="ghost" id="plusBtn">+1 (चढ़ा)</button>
+</div>
+<div class="row">
+  <button id="sendBtn">अभी सारांश भेजें</button>
+  <button class="ghost warn" id="resetBtn">आज का हिसाब साफ़ करें</button>
+</div>
+
+<div class="card">
+  <h2>सेटिंग</h2>
+  <label for="route">रूट का नाम</label>
+  <input id="route" placeholder="जैसे गन्नौर - रेलवे स्टेशन">
+  <label for="fare">किराया (₹)</label>
+  <input id="fare" type="number" min="1">
+  <label for="maxSeats">परमिट में कुल सवारी (RC/परमिट के अनुसार)</label>
+  <input id="maxSeats" type="number" min="1">
+  <label for="token">Telegram बॉट टोकन</label>
+  <input id="token" autocomplete="off" placeholder="BotFather से मिला टोकन">
+  <label for="chat">Telegram चैट ID</label>
+  <input id="chat" autocomplete="off" placeholder="आपका chat ID">
+  <div class="row"><button id="saveBtn">सेटिंग सेव करें</button></div>
+  <div class="sub">टोकन इसी फ़ोन में सेव होता है, किसी और को न दें।</div>
+</div>
+
+<div class="card">
+  <h2>आज की घटनाएं</h2>
+  <ul id="log"><li><span>अभी कोई घटना नहीं</span></li></ul>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const DEFAULTS = {route:'गन्नौर - रेलवे स्टेशन', fare:20, maxSeats:14, token:'', chat:''};
+  const CONFIRM_MS = 3000;   // गिनती बदलने के बाद इतने समय तक एक जैसी रहे तभी पक्की मानें
+  const DETECT_EVERY = 1000;
+  const SCORE_MIN = 0.5;
+
+  let S = {...DEFAULTS};
+  let day = freshDay();
+  let model = null, running = false, busy = false;
+  let candidate = 0, candSince = 0;
+  let pending = [];
+  let lastAutoSlot = '';
+  let video = $('cam'), ov = $('ov'), ctx = ov.getContext('2d');
+
+  function todayKey(){ return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}); }
+  function freshDay(){ return {date:todayKey(), boarded:0, alighted:0, inside:0, log:[], pending:[]}; }
+  function nowTime(){ return new Date().toLocaleTimeString('hi-IN',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kolkata'}); }
+
+  function loadAll(){
+    try{ const s = JSON.parse(localStorage.getItem('sc_settings')||'null'); if(s) S = {...DEFAULTS, ...s}; }catch(e){}
+    try{ const d = JSON.parse(localStorage.getItem('sc_day')||'null'); if(d && d.date===todayKey()) day = d; }catch(e){}
+    pending = day.pending || [];
+  }
+  function saveDay(){ day.pending = pending; try{ localStorage.setItem('sc_day', JSON.stringify(day)); }catch(e){} }
+  function saveSettings(){ try{ localStorage.setItem('sc_settings', JSON.stringify(S)); }catch(e){} }
+
+  function fillSettings(){
+    $('route').value=S.route; $('fare').value=S.fare; $('maxSeats').value=S.maxSeats;
+    $('token').value=S.token; $('chat').value=S.chat; $('routeLabel').textContent=S.route;
+  }
+
+  function addLog(text){
+    day.log.unshift(`${nowTime()}  ${text}`);
+    day.log = day.log.slice(0,50);
+    saveDay(); renderLog();
+  }
+  function renderLog(){
+    const ul = $('log');
+    ul.innerHTML = day.log.length ? day.log.slice(0,20).map(t=>`<li><span>${t}</span></li>`).join('') : '<li><span>अभी कोई घटना नहीं</span></li>';
+  }
+  function render(){
+    $('boarded').textContent = day.boarded;
+    $('alighted').textContent = day.alighted;
+    $('inside').textContent = day.inside;
+    $('income').textContent = '₹' + (day.boarded * S.fare);
+    $('warn').textContent = day.inside > S.maxSeats ? `सावधान: गाड़ी में ${day.inside} लोग हैं, परमिट में ${S.maxSeats} लिखे हैं` : '';
+    renderLog();
+  }
+
+  // ---- Telegram ----
+  async function sendTelegram(text){
+    if(!S.token || !S.chat) return false;
+    try{
+      const r = await fetch(`https://api.telegram.org/bot${S.token}/sendMessage`,{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({chat_id:S.chat, text})
+      });
+      return r.ok;
+    }catch(e){ return false; }
+  }
+  function summaryText(label){
+    return `📊 ${label}\n${S.route}\nसमय: ${nowTime()}\nचढ़ी सवारी: ${day.boarded}\nउतरी सवारी: ${day.alighted}\nअनुमानित कमाई: ₹${day.boarded * S.fare}\nअभी गाड़ी में: ${day.inside}`;
+  }
+  async function sendSummary(label){
+    const text = summaryText(label);
+    const ok = await sendTelegram(text);
+    if(!ok){ pending.push(text); saveDay(); $('status').textContent = 'नेटवर्क नहीं, सारांश बाद में भेजा जाएगा'; }
+    else { $('status').textContent = 'सारांश भेजा गया'; }
+    flushPending();
+  }
+  async function flushPending(){
+    while(pending.length){
+      const ok = await sendTelegram(pending[0]);
+      if(!ok) break;
+      pending.shift(); saveDay();
+    }
+  }
+
+  // ---- Camera & model ----
+  async function startCamera(){
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
+      video.srcObject = stream;
+      await video.play();
+      ov.width = video.videoWidth || 640; ov.height = video.videoHeight || 480;
+      return true;
+    }catch(e){
+      $('status').textContent = 'कैमरा नहीं चला: ' + (e && e.name ? e.name : 'अज्ञात') + ' · ' + (e && e.message ? e.message : '') + ' · ब्राउज़र में कैमरे की अनुमति दें या लिंक Chrome में खोलें';
+      return false;
+    }
+  }
+  async function loadModel(){
+    $('status').textContent = 'पहचान का मॉडल लोड हो रहा है…';
+    try{
+      model = await cocoSsd.load({base:'lite_mobilenet_v2'});
+      $('status').textContent = 'तैयार है। गाड़ी में सवारी बैठाकर "गिनती शुरू करें" दबाएं।';
+    }catch(e){
+      $('status').textContent = 'मॉडल लोड नहीं हुआ। इंटरनेट चेक करें।';
+    }
+  }
+
+  function drawBoxes(preds){
+    ctx.clearRect(0,0,ov.width,ov.height);
+    ctx.lineWidth = 3; ctx.strokeStyle = '#6fd39b'; ctx.fillStyle = '#6fd39b';
+    ctx.font = '600 18px sans-serif';
+    preds.forEach((p,i)=>{
+      const [x,y,w,h] = p.bbox;
+      ctx.strokeRect(x,y,w,h);
+      ctx.fillText(String(i+1), x+4, y+20);
+    });
+  }
+
+  async function tick(){
+    if(!running || busy || !model || !video.videoWidth) return;
+    busy = true;
+    try{
+      const preds = (await model.detect(video)).filter(p => p.class==='person' && p.score>=SCORE_MIN);
+      drawBoxes(preds);
+      const n = preds.length;
+      if(n !== candidate){ candidate = n; candSince = Date.now(); }
+      else if(n !== day.inside && Date.now() - candSince >= CONFIRM_MS){
+        const diff = n - day.inside;
+        if(diff > 0){ day.boarded += diff; addLog(`चढ़ी: ${diff}`); }
+        else { day.alighted += -diff; addLog(`उतरी: ${-diff}`); }
+        day.inside = n; saveDay(); render();
+      }
+      $('status').textContent = `अभी ${n} व्यक्ति दिख रहे हैं · गिनती चालू`;
+    }catch(e){}
+    busy = false;
+  }
+
+  // ---- Controls ----
+  $('startBtn').onclick = () => {
+    if(!model){ $('status').textContent = 'मॉडल अभी लोड हो रहा है…'; return; }
+    running = true;
+    candidate = day.inside; candSince = Date.now();
+    addLog('गिनती शुरू');
+    keepAwake();
+  };
+  $('pauseBtn').onclick = () => { running=false; addLog('गिनती रुकी'); $('status').textContent='रुका हुआ है'; };
+  $('plusBtn').onclick = () => { day.boarded++; day.inside++; addLog('हाथ से +1 (चढ़ा)'); saveDay(); render(); };
+  $('minusBtn').onclick = () => { if(day.inside>0){ day.alighted++; day.inside--; addLog('हाथ से -1 (उतरा)'); saveDay(); render(); } };
+  $('sendBtn').onclick = () => sendSummary('मैनुअल');
+  $('resetBtn').onclick = () => {
+    if(confirm('आज का पूरा हिसाब साफ़ करें?')){
+      day = freshDay(); pending = []; saveDay(); candidate = 0; render();
+      $('status').textContent = 'आज का हिसाब साफ़ हो गया';
+    }
+  };
+  $('saveBtn').onclick = () => {
+    S.route = $('route').value.trim() || DEFAULTS.route;
+    S.fare = Number($('fare').value) || DEFAULTS.fare;
+    S.maxSeats = Number($('maxSeats').value) || DEFAULTS.maxSeats;
+    S.token = $('token').value.trim();
+    S.chat = $('chat').value.trim();
+    saveSettings(); fillSettings(); render();
+    $('status').textContent = 'सेटिंग सेव हो गई';
+  };
+
+  // Keep screen on while counting
+  async function keepAwake(){
+    try{ if('wakeLock' in navigator) await navigator.wakeLock.request('screen'); }catch(e){}
+  }
+
+  // Half-hourly automatic summary and day rollover
+  setInterval(() => {
+    if(day.date !== todayKey()){ day = freshDay(); pending=[]; saveDay(); render(); }
+    const d = new Date();
+    const slot = `${todayKey()} ${d.getHours()}:${d.getMinutes() < 30 ? '00' : '30'}`;
+    if(running && d.getMinutes() % 30 === 0 && slot !== lastAutoSlot){
+      lastAutoSlot = slot; sendSummary('स्वचालित');
+    }
+    flushPending();
+  }, 60000);
+
+  // Boot
+  loadAll(); fillSettings(); render();
+  startCamera().then(ok => { if(ok) loadModel(); });
+  setInterval(tick, DETECT_EVERY);
+})();
+</script>
+</body>
+</html>
