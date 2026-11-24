@@ -57,6 +57,7 @@ li:last-child{border-bottom:0}
 <div class="row">
   <button id="startBtn">गिनती शुरू करें</button>
   <button class="ghost" id="pauseBtn">रोकें</button>
+  <button class="ghost" id="camBtn">कैमरा बदलें (आगे/पीछे)</button>
 </div>
 
 <div class="grid">
@@ -112,6 +113,7 @@ li:last-child{border-bottom:0}
   let pending = [];
   let lastAutoSlot = '';
   let video = $('cam'), ov = $('ov'), ctx = ov.getContext('2d');
+  let facing = 'environment';
 
   function todayKey(){ return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}); }
   function freshDay(){ return {date:todayKey(), boarded:0, alighted:0, inside:0, log:[], pending:[]}; }
@@ -180,7 +182,7 @@ li:last-child{border-bottom:0}
   // ---- Camera & model ----
   async function startCamera(){
     try{
-      const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}, audio:false});
+      const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:facing}}, audio:false});
       video.srcObject = stream;
       await video.play();
       ov.width = video.videoWidth || 640; ov.height = video.videoHeight || 480;
@@ -237,6 +239,12 @@ li:last-child{border-bottom:0}
     candidate = day.inside; candSince = Date.now();
     addLog('गिनती शुरू');
     keepAwake();
+  };
+  $('camBtn').onclick = async () => {
+    facing = facing === 'environment' ? 'user' : 'environment';
+    if(video.srcObject){ video.srcObject.getTracks().forEach(t => t.stop()); }
+    await startCamera();
+    $('status').textContent = facing === 'user' ? 'आगे वाला कैमरा चालू है' : 'पीछे वाला कैमरा चालू है';
   };
   $('pauseBtn').onclick = () => { running=false; addLog('गिनती रुकी'); $('status').textContent='रुका हुआ है'; };
   $('plusBtn').onclick = () => { day.boarded++; day.inside++; addLog('हाथ से +1 (चढ़ा)'); saveDay(); render(); };
